@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     use_mock_calendar: bool = False
     smartstock_latitude: float | None = Field(default=None, ge=-90, le=90)
     smartstock_longitude: float | None = Field(default=None, ge=-180, le=180)
+    demand_sales_sources: str = "SYNTHETIC"
+    demand_weather_sources: str = "SYNTHETIC"
 
     @field_validator("weather_timezone")
     @classmethod

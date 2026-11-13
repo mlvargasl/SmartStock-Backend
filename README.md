@@ -49,6 +49,20 @@ python -m app.seed
 
 El seed crea cuentas y datos de ejemplo para desarrollo. No cambia las contraseñas de usuarios que ya existen.
 
+Para tener historial de ventas de demostración, después de migrar y ejecutar el seed:
+
+```bash
+python -m app.generate_synthetic_sales --days 365
+```
+
+En Windows, desde la raíz del proyecto, ejecuta ` .\.venv\Scripts\python.exe -m app.generate_synthetic_sales --days 365`. Los registros quedan marcados con origen `SYNTHETIC` y se pueden volver a cargar; las cantidades y el clima sintético se actualizan de forma reproducible. Son datos artificiales para desarrollar y probar la interfaz; no representan la demanda real ni deben usarse para decisiones de producción.
+
+## Pronóstico de demanda
+
+Después de aplicar migraciones y generar el historial sintético, consulta `GET /api/forecast/demand?day=AAAA-MM-DD` (opcionalmente `&product_id=1`) con una fecha entre hoy y los próximos 15 días. El resultado incluye unidades estimadas por producto, clima consultado y las fuentes/fechas usadas para entrenar. El modelo inicial es una regresión lineal Ridge con día de semana, estacionalidad anual, temperatura y precipitación. Requiere al menos 30 días de historial y señala `data_quality: synthetic` mientras use datos sintéticos.
+
+Para reemplazar el clima sintético por observaciones históricas reales de Open-Meteo: `python -m app.import_weather_history --days 365`. Luego configura `DEMAND_WEATHER_SOURCES=Open-Meteo`. Cuando importes ventas reales, configura `DEMAND_SALES_SOURCES` con sus orígenes (por ejemplo `IMPORT,MANUAL,EXTERNAL`) para entrenar solo con esas ventas. El modelo lee las transacciones desde la base; no depende de archivos sintéticos específicos.
+
 ## 6. Iniciar el backend
 
 ```bash

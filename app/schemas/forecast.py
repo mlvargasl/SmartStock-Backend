@@ -47,6 +47,25 @@ class ForecastContext(BaseModel):
     calendar: CalendarResult
 
 
+class DemandPrediction(BaseModel):
+    product_id: int
+    product_name: str
+    predicted_units: int
+    training_days: int
+
+
+class DemandForecast(BaseModel):
+    date: date
+    location: ForecastLocation
+    weather: WeatherResult
+    model: str
+    data_quality: Literal["synthetic", "real"]
+    training_period: dict[str, date]
+    training_sales_sources: list[str]
+    training_weather_sources: list[str]
+    predictions: list[DemandPrediction]
+
+
 class CalendarDay(BaseModel):
     date: date
     is_holiday: bool
