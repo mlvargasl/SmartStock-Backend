@@ -136,7 +136,7 @@ class SaleTransaction(Base):
     __table_args__ = (
         UniqueConstraint("source", "external_id", name="uq_sale_source_external_id"),
         CheckConstraint(
-            "source IN ('MANUAL', 'IMPORT', 'EXTERNAL', 'LEGACY')",
+            "source IN ('MANUAL', 'IMPORT', 'EXTERNAL', 'LEGACY', 'SYNTHETIC')",
             name="ck_transaction_source",
         ),
         CheckConstraint(
@@ -179,3 +179,33 @@ class Sale(Base):
     )
     transaction: Mapped[SaleTransaction] = relationship(back_populates="items")
     product: Mapped[Product] = relationship(lazy="joined")
+
+
+class WeatherObservation(Base):
+    """Daily weather used to train demand models, with provenance kept explicit."""
+
+    __tablename__ = "weather_observations"
+    __table_args__ = (
+        UniqueConstraint("observation_date", name="uq_weather_observation_date"),
+        CheckConstraint(
+            "precipitation_mm >= 0", name="ck_weather_precipitation_nonnegative"
+        ),
+        CheckConstraint(
+            "precipitation_probability_percent IS NULL OR "
+            "precipitation_probability_percent BETWEEN 0 AND 100",
+            name="ck_weather_probability_range",
+        ),
+        CheckConstraint(
+            "source IN ('SYNTHETIC', 'Open-Meteo')", name="ck_weather_source"
+        ),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    observation_date: Mapped[date] = mapped_column(Date, index=True)
+    temperature_max_c: Mapped[float | None] = mapped_column(Numeric(6, 2))
+    temperature_min_c: Mapped[float | None] = mapped_column(Numeric(6, 2))
+    precipitation_mm: Mapped[float] = mapped_column(Numeric(7, 2))
+    precipitation_probability_percent: Mapped[float | None] = mapped_column(
+        Numeric(5, 2)
+    )
+    weather_code: Mapped[int | None] = mapped_column(Integer)
+    source: Mapped[str] = mapped_column(String(16))
