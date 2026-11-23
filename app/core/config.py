@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     smartstock_longitude: float | None = Field(default=None, ge=-180, le=180)
     demand_sales_sources: str = "SYNTHETIC"
     demand_weather_sources: str = "SYNTHETIC"
+    demand_calendar_sources: str = "SYNTHETIC,api.restart.cl"
 
     @field_validator("weather_timezone")
     @classmethod

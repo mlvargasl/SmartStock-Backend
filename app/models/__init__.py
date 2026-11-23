@@ -214,4 +214,22 @@ class WeatherObservation(Base):
     source: Mapped[str] = mapped_column(String(16))
 
 
+class CalendarObservation(Base):
+    """Daily Chilean holiday and festivity indicators used for model training."""
+
+    __tablename__ = "calendar_observations"
+    __table_args__ = (
+        UniqueConstraint("observation_date", name="uq_calendar_observation_date"),
+        CheckConstraint(
+            "source IN ('SYNTHETIC', 'api.restart.cl')",
+            name="ck_calendar_observation_source",
+        ),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    observation_date: Mapped[date] = mapped_column(Date, index=True)
+    is_holiday: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_festivity: Mapped[bool] = mapped_column(Boolean, default=False)
+    source: Mapped[str] = mapped_column(String(20))
+
+
 from app.models.recommendation import Recommendation, RecommendationItem, RecommendationChange  # noqa: F401

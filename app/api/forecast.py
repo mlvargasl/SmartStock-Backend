@@ -8,7 +8,7 @@ from app.api.deps import Db, allow
 from app.core.config import get_settings
 from app.models import Role
 from app.schemas.forecast import CalendarMonth, DemandForecast, ForecastContext
-from app.integrations.context import calendar_for_range, weather_for_day
+from app.integrations.context import calendar_for_range
 from app.services.forecast_context import forecast_context, valid_forecast_day
 from app.services.demand_forecast import predict_demand
 
@@ -49,10 +49,13 @@ async def get_demand_forecast(
 ):
     settings = get_settings()
     valid_forecast_day(day, settings)
-    weather = await weather_for_day(client, settings, day)
-    if weather["status"] != "available" or weather["data"] is None:
-        raise HTTPException(503, weather["message"] or "Weather data unavailable")
-    values = weather["data"]
+    context = await forecast_context(day, settings, client)
+    if context["weather"]["status"] != "available":
+        raise HTTPException(503, context["weather"]["message"])
+    if context["calendar"]["status"] != "available":
+        raise HTTPException(503, context["calendar"]["message"])
+
+    values = context["weather"]["data"]
     target_weather = {
         "temperature_max_c": values["temperature_max_c"] or 0,
         "temperature_min_c": values["temperature_min_c"] or 0,
@@ -61,10 +64,16 @@ async def get_demand_forecast(
             values["precipitation_probability_percent"] or 0
         ),
     }
+    events = context["calendar"]["events"]
+    target_calendar = {
+        "is_holiday": bool(context["calendar"]["is_holiday"]),
+        "is_festivity": any(event["kind"] == "conmemoracion" for event in events),
+    }
     result = predict_demand(
         db,
         day,
         target_weather,
+        target_calendar,
         sales_sources=[
             value.strip()
             for value in settings.demand_sales_sources.split(",")
@@ -75,25 +84,18 @@ async def get_demand_forecast(
             for value in settings.demand_weather_sources.split(",")
             if value.strip()
         ],
+        calendar_sources=[
+            value.strip()
+            for value in settings.demand_calendar_sources.split(",")
+            if value.strip()
+        ],
         product_id=product_id,
     )
     return {
         "date": day,
-        "location": {
-            "name": settings.weather_location_name,
-            "latitude": (
-                settings.smartstock_latitude
-                if settings.smartstock_latitude is not None
-                else settings.weather_latitude
-            ),
-            "longitude": (
-                settings.smartstock_longitude
-                if settings.smartstock_longitude is not None
-                else settings.weather_longitude
-            ),
-            "timezone": settings.weather_timezone,
-        },
-        "weather": weather,
+        "location": context["location"],
+        "weather": context["weather"],
+        "calendar": context["calendar"],
         **result,
     }
 

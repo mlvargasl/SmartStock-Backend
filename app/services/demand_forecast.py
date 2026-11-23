@@ -8,13 +8,19 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Product, Sale, SaleTransaction, WeatherObservation
+from app.models import (
+    CalendarObservation,
+    Product,
+    Sale,
+    SaleTransaction,
+    WeatherObservation,
+)
 
 
 MIN_TRAINING_DAYS = 30
 
 
-def _weather_features(day: date, weather: dict) -> list[float]:
+def _features(day: date, weather: dict, calendar: dict) -> list[float]:
     annual_phase = 2 * pi * (day.timetuple().tm_yday - 1) / 365.25
     return [
         float(day.weekday() == weekday) for weekday in range(1, 7)
@@ -25,6 +31,8 @@ def _weather_features(day: date, weather: dict) -> list[float]:
         weather["temperature_min_c"],
         weather["precipitation_mm"],
         weather["precipitation_probability_percent"],
+        float(calendar["is_holiday"]),
+        float(calendar["is_festivity"]),
     ]
 
 
@@ -51,9 +59,16 @@ def _solve(matrix: list[list[float]], vector: list[float]) -> list[float]:
     return [augmented[row][-1] for row in range(size)]
 
 
-def _fit_predict(rows: list[tuple[date, dict, int]], target_day: date, target_weather: dict):
-    raw_features = [_weather_features(day, weather) for day, weather, _ in rows]
-    target_raw = _weather_features(target_day, target_weather)
+def _fit_predict(
+    rows: list[tuple[date, dict, dict, int]],
+    target_day: date,
+    target_weather: dict,
+    target_calendar: dict,
+):
+    raw_features = [
+        _features(day, weather, calendar) for day, weather, calendar, _ in rows
+    ]
+    target_raw = _features(target_day, target_weather, target_calendar)
     feature_count = len(target_raw)
 
     means = [sum(row[index] for row in raw_features) / len(raw_features) for index in range(8, feature_count)]
@@ -89,12 +104,14 @@ def predict_demand(
     db: Session,
     target_day: date,
     target_weather: dict,
+    target_calendar: dict,
     sales_sources: list[str],
     weather_sources: list[str],
+    calendar_sources: list[str],
     product_id=None,
 ):
-    if not sales_sources or not weather_sources:
-        raise HTTPException(422, "Configura fuentes de ventas y clima para entrenar.")
+    if not sales_sources or not weather_sources or not calendar_sources:
+        raise HTTPException(422, "Configura fuentes de ventas, clima y calendario.")
     weather_rows = list(
         db.scalars(
             select(WeatherObservation)
@@ -102,14 +119,13 @@ def predict_demand(
             .order_by(WeatherObservation.observation_date)
         )
     )
-    if len(weather_rows) < MIN_TRAINING_DAYS:
-        raise HTTPException(
-            422,
-            f"Se requieren al menos {MIN_TRAINING_DAYS} días de clima histórico para entrenar.",
+    calendar_rows = list(
+        db.scalars(
+            select(CalendarObservation)
+            .where(CalendarObservation.source.in_(calendar_sources))
+            .order_by(CalendarObservation.observation_date)
         )
-
-    start = weather_rows[0].observation_date
-    end = weather_rows[-1].observation_date
+    )
     weather_by_day = {
         row.observation_date: {
             "temperature_max_c": float(row.temperature_max_c or 0),
@@ -121,6 +137,20 @@ def predict_demand(
         }
         for row in weather_rows
     }
+    calendar_by_day = {
+        row.observation_date: {
+            "is_holiday": row.is_holiday,
+            "is_festivity": row.is_festivity,
+        }
+        for row in calendar_rows
+    }
+    training_days = sorted(weather_by_day.keys() & calendar_by_day.keys())
+    if len(training_days) < MIN_TRAINING_DAYS:
+        raise HTTPException(
+            422,
+            f"Se requieren al menos {MIN_TRAINING_DAYS} fechas con clima y calendario históricos.",
+        )
+    start, end = training_days[0], training_days[-1]
     quantities = defaultdict(int)
     for sale_day, pid, units in db.execute(
         select(Sale.sale_date, Sale.product_id, func.sum(Sale.quantity))
@@ -161,12 +191,13 @@ def predict_demand(
         training = [
             (
                 day,
-                weather,
+                weather_by_day[day],
+                calendar_by_day[day],
                 quantities[(day, product.id)],
             )
-            for day, weather in weather_by_day.items()
+            for day in training_days
         ]
-        if sum(units > 0 for _, _, units in training) < MIN_TRAINING_DAYS:
+        if sum(units > 0 for _, _, _, units in training) < MIN_TRAINING_DAYS:
             raise HTTPException(
                 422,
                 f"El producto {product.name} no tiene suficientes días con ventas para entrenar.",
@@ -175,16 +206,25 @@ def predict_demand(
             {
                 "product_id": product.id,
                 "product_name": product.name,
-                "predicted_units": _fit_predict(training, target_day, target_weather),
+                "predicted_units": _fit_predict(
+                    training, target_day, target_weather, target_calendar
+                ),
                 "training_days": len(training),
             }
         )
 
     used_sales_sources = sorted(source_counts)
-    used_weather_sources = sorted({row.source for row in weather_rows})
+    used_weather_sources = sorted(
+        {row.source for row in weather_rows if row.observation_date in training_days}
+    )
+    used_calendar_sources = sorted(
+        {row.source for row in calendar_rows if row.observation_date in training_days}
+    )
     quality = (
         "synthetic"
-        if "SYNTHETIC" in used_sales_sources or "SYNTHETIC" in used_weather_sources
+        if "SYNTHETIC" in used_sales_sources
+        or "SYNTHETIC" in used_weather_sources
+        or "SYNTHETIC" in used_calendar_sources
         else "real"
     )
     return {
@@ -193,5 +233,6 @@ def predict_demand(
         "training_period": {"start": start, "end": end},
         "training_sales_sources": used_sales_sources,
         "training_weather_sources": used_weather_sources,
+        "training_calendar_sources": used_calendar_sources,
         "predictions": predictions,
     }
