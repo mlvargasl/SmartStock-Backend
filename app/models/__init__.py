@@ -59,8 +59,10 @@ class User(TimestampMixin, Base):
 
 class Product(TimestampMixin, Base):
     __tablename__ = "products"
+    __table_args__ = (CheckConstraint("stock_quantity >= 0", name="ck_product_stock_nonnegative"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(150), unique=True, index=True)
+    stock_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     description: Mapped[str | None] = mapped_column(String(1000))
     external_code: Mapped[str | None] = mapped_column(String(100), unique=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
@@ -151,6 +153,7 @@ class SaleTransaction(Base):
     status: Mapped[str] = mapped_column(
         String(16), default="COMPLETED", server_default="COMPLETED"
     )
+    stock_deducted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -209,3 +212,6 @@ class WeatherObservation(Base):
     )
     weather_code: Mapped[int | None] = mapped_column(Integer)
     source: Mapped[str] = mapped_column(String(16))
+
+
+from app.models.recommendation import Recommendation, RecommendationItem, RecommendationChange  # noqa: F401

@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from app.models import Sale, SaleTransaction
+from app.models import Product, Sale, SaleTransaction
 
 
 class TransactionRepository:
@@ -24,6 +24,10 @@ class TransactionRepository:
         if lock:
             stmt = stmt.with_for_update(of=SaleTransaction)
         return self.db.scalars(stmt).unique().one_or_none()
+
+    def lock_products(self, product_ids):
+        stmt = select(Product).where(Product.id.in_(product_ids)).order_by(Product.id).with_for_update()
+        return {product.id: product for product in self.db.scalars(stmt)}
 
     def save(self, obj):
         self.db.add(obj)

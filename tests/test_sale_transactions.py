@@ -9,6 +9,8 @@ def test_multi_item_transaction_cancel_and_dashboard(client, auth):
     b = client.post(
         "/api/products", headers=h, json={"name": "Galleta", "external_code": "POS-2"}
     ).json()
+    for product in (a, b):
+        assert client.put(f"/api/products/{product['id']}/stock", headers=h, json={"stock_quantity": 100}).status_code == 200
     stamp = datetime.now(timezone.utc).isoformat()
     body = {
         "sold_at": stamp,
@@ -57,6 +59,7 @@ def test_multi_item_transaction_cancel_and_dashboard(client, auth):
 def test_external_id_deduplication_and_validation(client, auth):
     h = auth()
     p = client.post("/api/products", headers=h, json={"name": "Pan"}).json()
+    assert client.put(f"/api/products/{p['id']}/stock", headers=h, json={"stock_quantity": 100}).status_code == 200
     body = {
         "source": "EXTERNAL",
         "external_id": "POS-44",

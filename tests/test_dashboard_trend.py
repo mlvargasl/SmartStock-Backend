@@ -8,6 +8,7 @@ def test_sales_trend_counts_days_and_excludes_cancelled(client, auth):
     product = client.post(
         "/api/products", headers=headers, json={"name": "Pan diario"}
     ).json()["id"]
+    assert client.put(f"/api/products/{product}/stock", headers=headers, json={"stock_quantity": 100}).status_code == 200
     now = datetime.now(ZoneInfo(get_settings().weather_timezone))
 
     def create(day, quantity):

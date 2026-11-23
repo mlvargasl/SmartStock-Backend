@@ -1,3 +1,4 @@
+from app.api.recommendations import router as recommendations_router
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,11 +9,12 @@ from app.api.forecast import router as forecast_router
 from app.api.external import router as external_router
 from app.exceptions.external import ExternalAPIError
 from app.core.config import get_settings
+from app.openapi_docs import TAG_DESCRIPTIONS, enrich_openapi
 
 app = FastAPI(
     title="SmartStock API",
     version="1.0.0",
-    description="Core data management for Mellow Bakery.",
+    openapi_tags=TAG_DESCRIPTIONS,
 )
 app.add_middleware(
     CORSMiddleware,
@@ -26,6 +28,7 @@ app.add_middleware(
 app.include_router(router)
 app.include_router(sale_transactions_router)
 app.include_router(forecast_router)
+app.include_router(recommendations_router)
 app.include_router(external_router)
 
 
@@ -47,3 +50,14 @@ def database_error(request: Request, exc: OperationalError):
 @app.exception_handler(ExternalAPIError)
 def external_api_error(request: Request, exc: ExternalAPIError):
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+# Enriquecer el esquema generado sin cambiar el comportamiento de los endpoints.
+_original_openapi = app.openapi
+
+
+def documented_openapi():
+    return enrich_openapi(_original_openapi())
+
+
+app.openapi = documented_openapi

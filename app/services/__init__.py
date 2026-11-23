@@ -153,10 +153,20 @@ class Service:
         ]
 
     def sale(self, data, commit=True, source="MANUAL"):
-        product = self.get(Product, data.product_id)
+        if source == "MANUAL":
+            from app.repositories.sale_transactions import TransactionRepository
+            product = TransactionRepository(self.repo.db).lock_products([data.product_id]).get(data.product_id)
+            if product is None:
+                raise HTTPException(404, "Product not found")
+        else:
+            product = self.get(Product, data.product_id)
         if not product.active:
             raise HTTPException(400, "Product is inactive")
-        transaction = SaleTransaction(source=source, sale_date=data.sale_date)
+        if source == "MANUAL":
+            if product.stock_quantity < data.quantity:
+                raise HTTPException(400, f"Stock insuficiente para {product.name}. Disponible: {product.stock_quantity}.")
+            product.stock_quantity -= data.quantity
+        transaction = SaleTransaction(source=source, sale_date=data.sale_date, stock_deducted=source == "MANUAL")
         obj = self.repo.add(Sale(**data.model_dump(), transaction=transaction))
         if commit:
             self.repo.save()

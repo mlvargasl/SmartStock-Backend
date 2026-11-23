@@ -102,7 +102,22 @@ class ProductIn(BaseModel):
     active: bool = True
 
 
+class ProductStockUpdate(BaseModel):
+    stock_quantity: int = Field(ge=0, le=2147483647, strict=True)
+
+
+class ProductStockBulkItem(BaseModel):
+    product_id: int = Field(gt=0)
+    expected_stock: int = Field(ge=0, le=2147483647, strict=True)
+    stock_quantity: int = Field(ge=0, le=2147483647, strict=True)
+
+
+class ProductStockBulkUpdate(BaseModel):
+    items: list[ProductStockBulkItem] = Field(min_length=1, max_length=1000)
+
+
 class ProductOut(ProductIn, Out):
+    stock_quantity: int
     id: int
     created_at: datetime
     updated_at: datetime
@@ -158,6 +173,16 @@ class RecipeOut(Out):
 
 class StockUpdate(BaseModel):
     current_stock: Amount
+
+
+class IngredientStockBulkItem(BaseModel):
+    ingredient_id: int = Field(gt=0)
+    expected_stock: Amount
+    current_stock: Amount
+
+
+class IngredientStockBulkUpdate(BaseModel):
+    items: list[IngredientStockBulkItem] = Field(min_length=1, max_length=1000)
 
 
 class StockAdjust(BaseModel):

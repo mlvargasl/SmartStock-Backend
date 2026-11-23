@@ -132,6 +132,7 @@ def test_catalog_recipes_inventory(client, auth):
 def test_sales_import_and_dashboard(client, auth):
     h = auth()
     pid = client.post("/api/products", headers=h, json={"name": "Pan"}).json()["id"]
+    assert client.put(f"/api/products/{pid}/stock", headers=h, json={"stock_quantity": 10}).status_code == 200
     today = date.today()
     assert (
         client.post(
@@ -393,6 +394,7 @@ def test_export_formula_name_and_reimport(client, auth):
     pid = client.post("/api/products", headers=h, json={"name": "=Producto"}).json()[
         "id"
     ]
+    assert client.put(f"/api/products/{pid}/stock", headers=h, json={"stock_quantity": 10}).status_code == 200
     assert (
         client.post(
             "/api/sales",

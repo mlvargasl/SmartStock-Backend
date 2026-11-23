@@ -20,11 +20,14 @@ from app.schemas import (
     PasswordChange,
     ImportResult,
     IngredientIn,
+    IngredientStockBulkUpdate,
     IngredientOut,
     InventoryOut,
     Login,
     LowStock,
     ProductIn,
+    ProductStockUpdate,
+    ProductStockBulkUpdate,
     ProductOut,
     ProductImportResult,
     RecipeIn,
@@ -222,6 +225,35 @@ def product_status(product_id: int, data: StatusUpdate, s: Svc):
     return s.update(Product, product_id, data)
 
 
+@router.post(
+    "/products/stock/bulk",
+    response_model=list[ProductOut],
+    tags=["Products"],
+    dependencies=[all_roles],
+)
+def update_products_stock(data: ProductStockBulkUpdate, s: Svc):
+    from app.services.product_stock import update_product_stocks
+    return update_product_stocks(s.repo.db, data.items)
+
+
+@router.put(
+    "/products/{product_id}/stock",
+    response_model=ProductOut,
+    tags=["Products"],
+    dependencies=[all_roles],
+)
+def update_product_stock(product_id: int, data: ProductStockUpdate, s: Svc):
+    from app.repositories.sale_transactions import TransactionRepository
+    product = TransactionRepository(s.repo.db).lock_products([product_id]).get(product_id)
+    if product is None:
+        raise HTTPException(404, "Product not found")
+    if not product.active:
+        raise HTTPException(400, "Product is inactive")
+    product.stock_quantity = data.stock_quantity
+    s.repo.save()
+    return product
+
+
 @router.get(
     "/products/{product_id}/recipe",
     response_model=RecipeOut,
@@ -375,6 +407,17 @@ def inventory(ingredient_id: int, s: Svc):
 )
 def set_stock(ingredient_id: int, data: StockUpdate, s: Svc):
     return s.stock(ingredient_id, data.current_stock)
+
+
+@router.post(
+    "/inventory/stock/bulk",
+    response_model=list[InventoryOut],
+    tags=["Inventory"],
+    dependencies=[inventory_roles],
+)
+def update_inventory_bulk(data: IngredientStockBulkUpdate, s: Svc):
+    from app.services.inventory_bulk import update_ingredient_stocks
+    return update_ingredient_stocks(s.repo.db, data.items)
 
 
 @router.post(
