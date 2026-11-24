@@ -30,6 +30,22 @@ def test_validate_recommendation_and_roles(client, auth):
     assert client.post('/api/recommendations', headers=headers, json=body).status_code == 400
 
 
+def test_only_latest_recommendation_is_listed_per_day(client, auth):
+    headers = auth()
+    product = client.post('/api/products', headers=headers, json={'name': 'Producto reemplazo'}).json()
+    def save(day, amount):
+        response = client.post('/api/recommendations', headers=headers, json={'forecast_date': day, 'items': [{'product_id': product['id'], 'predicted_units': amount, 'final_units': amount}]})
+        assert response.status_code == 201
+        return response.json()
+    first = save('2026-11-23', 10)
+    second = save('2026-11-23', 20)
+    other = save('2026-11-24', 30)
+    listed = client.get('/api/recommendations', headers=headers).json()
+    assert {row['id'] for row in listed} == {second['id'], other['id']}
+    assert first['id'] not in {row['id'] for row in listed}
+    assert [row['id'] for row in client.get('/api/recommendations?day=2026-11-23', headers=headers).json()] == [second['id']]
+
+
 def test_edit_permissions_filter_and_audit(client, auth, connection):
     from sqlalchemy import text
     admin = auth()

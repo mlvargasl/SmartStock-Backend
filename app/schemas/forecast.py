@@ -54,6 +54,13 @@ class DemandPrediction(BaseModel):
     training_days: int
 
 
+class UnavailableProduct(BaseModel):
+    product_id: int
+    product_name: str
+    available_days: int
+    required_days: int
+
+
 class DemandForecast(BaseModel):
     date: date
     location: ForecastLocation
@@ -66,6 +73,7 @@ class DemandForecast(BaseModel):
     training_weather_sources: list[str]
     training_calendar_sources: list[str]
     predictions: list[DemandPrediction]
+    unavailable_products: list[UnavailableProduct]
 
 
 class CalendarDay(BaseModel):

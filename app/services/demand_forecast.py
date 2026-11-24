@@ -88,7 +88,7 @@ def _fit_predict(
     width = len(target)
     gram = [[0.0] * width for _ in range(width)]
     rhs = [0.0] * width
-    for x_row, (_, _, quantity) in zip(x_rows, rows):
+    for x_row, (_, _, _, quantity) in zip(x_rows, rows):
         for i in range(width):
             rhs[i] += x_row[i] * quantity
             for j in range(width):
@@ -187,6 +187,7 @@ def predict_demand(
         raise HTTPException(404, "Product not found")
 
     predictions = []
+    unavailable_products = []
     for product in products:
         training = [
             (
@@ -197,11 +198,15 @@ def predict_demand(
             )
             for day in training_days
         ]
-        if sum(units > 0 for _, _, _, units in training) < MIN_TRAINING_DAYS:
-            raise HTTPException(
-                422,
-                f"El producto {product.name} no tiene suficientes días con ventas para entrenar.",
-            )
+        sales_days = sum(units > 0 for _, _, _, units in training)
+        if sales_days < MIN_TRAINING_DAYS:
+            unavailable_products.append({
+                "product_id": product.id,
+                "product_name": product.name,
+                "available_days": sales_days,
+                "required_days": MIN_TRAINING_DAYS,
+            })
+            continue
         predictions.append(
             {
                 "product_id": product.id,
@@ -235,4 +240,5 @@ def predict_demand(
         "training_weather_sources": used_weather_sources,
         "training_calendar_sources": used_calendar_sources,
         "predictions": predictions,
+        "unavailable_products": unavailable_products,
     }

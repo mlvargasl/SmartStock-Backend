@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
@@ -38,3 +38,14 @@ class RecommendationChange(Base):
     new_units: Mapped[int] = mapped_column(Integer)
     reason: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProductionConfirmation(Base):
+    __tablename__ = "production_confirmations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    production_date: Mapped[date] = mapped_column(Date, unique=True, nullable=False)
+    recommendation_id: Mapped[int] = mapped_column(ForeignKey("recommendations.id"), nullable=False)
+    confirmed_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ingredients: Mapped[list] = mapped_column(JSON, nullable=False)
+    products: Mapped[list | None] = mapped_column(JSON, nullable=True)

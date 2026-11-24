@@ -27,9 +27,10 @@ class RecommendationRepository:
         return self.db.scalar(select(Recommendation).where(Recommendation.id == ident).with_for_update(of=Recommendation))
 
     def list(self, day: date | None = None) -> list[Recommendation]:
-        query = select(Recommendation)
+        latest = select(func.max(Recommendation.id).label('id')).group_by(Recommendation.forecast_date)
         if day is not None:
-            query = query.where(Recommendation.forecast_date == day)
+            latest = latest.where(Recommendation.forecast_date == day)
+        query = select(Recommendation).where(Recommendation.id.in_(latest))
         return list(self.db.scalars(query.order_by(Recommendation.forecast_date.desc(), Recommendation.id.desc())).unique())
 
     def latest_in_range(self, start: date, end: date) -> list[Recommendation]:

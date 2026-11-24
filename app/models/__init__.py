@@ -232,4 +232,4 @@ class CalendarObservation(Base):
     source: Mapped[str] = mapped_column(String(20))
 
 
-from app.models.recommendation import Recommendation, RecommendationItem, RecommendationChange  # noqa: F401
+from app.models.recommendation import Recommendation, RecommendationItem, RecommendationChange, ProductionConfirmation  # noqa: F401

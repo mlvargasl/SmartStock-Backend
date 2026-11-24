@@ -4,6 +4,7 @@ The public response shape is preserved while using the shared providers.
 """
 
 from datetime import date, timedelta
+from time import monotonic
 from typing import Any
 import httpx
 from app.core.config import Settings, get_settings
@@ -12,6 +13,10 @@ from app.integrations.calendar.client import ChileCalendarProvider
 from app.integrations.calendar.mock import MockCalendarProvider
 from app.integrations.weather.client import OpenMeteoProvider
 from app.integrations.weather.mock import MockWeatherProvider
+
+# Reuse successful calendar responses, including a day requested after its month.
+_calendar_cache: dict[tuple[str, str, date, date], tuple[float, list[dict]]] = {}
+_CALENDAR_CACHE_SECONDS = 3600
 
 
 async def weather_for_day(
@@ -87,7 +92,21 @@ async def calendar_for_range(
                 day += timedelta(days=1)
         else:
             provider = ChileCalendarProvider(client, settings)
-            days = await provider.get_range(start, end, region_code=region_code)
+            now = monotonic()
+            base = settings.calendar_api_url or "https://api.restart.cl"
+            cached = None
+            for key, (expires, cached_days) in list(_calendar_cache.items()):
+                if expires <= now:
+                    del _calendar_cache[key]
+                elif key[0] == base and key[1] == region_code and key[2] <= start and key[3] >= end:
+                    cached = [day for day in cached_days if start <= day["date"] <= end]
+            if cached is None:
+                days = await provider.get_range(start, end, region_code=region_code)
+                if len(_calendar_cache) >= 64:
+                    _calendar_cache.pop(next(iter(_calendar_cache)))
+                _calendar_cache[(base, region_code, start, end)] = (now + _CALENDAR_CACHE_SECONDS, days)
+            else:
+                days = cached
         return {
             "status": "available",
             "source": provider.source,
