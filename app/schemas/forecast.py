@@ -58,11 +58,13 @@ class DemandForecast(BaseModel):
     date: date
     location: ForecastLocation
     weather: WeatherResult
+    calendar: CalendarResult
     model: str
     data_quality: Literal["synthetic", "real"]
     training_period: dict[str, date]
     training_sales_sources: list[str]
     training_weather_sources: list[str]
+    training_calendar_sources: list[str]
     predictions: list[DemandPrediction]
 
 

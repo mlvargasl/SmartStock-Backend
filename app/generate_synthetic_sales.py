@@ -9,7 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.database import SessionLocal
-from app.models import Product, Sale, SaleTransaction, WeatherObservation
+from app.models import (
+    CalendarObservation,
+    Product,
+    Sale,
+    SaleTransaction,
+    WeatherObservation,
+)
 
 
 def synthetic_weather(day: date, seed: int) -> dict:
@@ -29,10 +35,30 @@ def synthetic_weather(day: date, seed: int) -> dict:
     }
 
 
+def synthetic_calendar(day: date) -> dict:
+    """Small Chile-focused calendar sample for demo dates without imported events."""
+    holidays = {
+        (1, 1), (5, 1), (5, 21), (8, 15), (9, 18),
+        (9, 19), (10, 12), (11, 1), (12, 8), (12, 25),
+    }
+    first_sunday_may = 1 + (6 - date(day.year, 5, 1).weekday()) % 7
+    first_sunday_june = 1 + (6 - date(day.year, 6, 1).weekday()) % 7
+    festive_dates = {
+        (2, 14),
+        (5, first_sunday_may + 7),  # Mother's Day
+        (6, first_sunday_june + 14),  # Father's Day
+        (10, 31),
+    }
+    return {
+        "is_holiday": (day.month, day.day) in holidays,
+        "is_festivity": (day.month, day.day) in festive_dates,
+    }
+
+
 def units_for_day(
-    day: date, product_index: int, weather: dict, seed: int
+    day: date, product_index: int, weather: dict, calendar: dict, seed: int
 ) -> int:
-    """A demo-only pattern with weekday, season, temperature and rain effects."""
+    """Demo-only demand includes weekday, weather, holiday and festivity signals."""
     rng = random.Random(seed + day.toordinal() * 37 + product_index)
     weekday_factor = (0.72, 0.82, 0.92, 1.0, 1.22, 1.55, 1.35)[day.weekday()]
     seasonal_factor = 1 + 0.12 * math.sin(
@@ -42,14 +68,17 @@ def units_for_day(
     temp_delta = (weather["temperature_max_c"] - 20) / 10
     product_temp_effect = temp_delta * (0.13 if product_index % 2 else -0.10)
     rain_effect = -0.035 * weather["precipitation_mm"]
-    weather_factor = max(0.45, 1 + product_temp_effect + rain_effect)
+    calendar_factor = (
+        1.35 if calendar["is_holiday"] else 1.2 if calendar["is_festivity"] else 1.0
+    )
+    weather_factor = max(0.45, (1 + product_temp_effect + rain_effect) * calendar_factor)
     amount = rng.gauss(
         product_base * weekday_factor * seasonal_factor * weather_factor, 1.6
     )
     return max(1, round(amount))
 
 
-def generate(days: int = 365, seed: int = 2026) -> tuple[int, int]:
+def generate(days: int = 365, seed: int = 2026) -> tuple[int, int, int, int]:
     if days < 1 or days > 3650:
         raise ValueError("days debe estar entre 1 y 3650")
 
@@ -90,25 +119,56 @@ def generate(days: int = 365, seed: int = 2026) -> tuple[int, int]:
                 )
             )
         }
+        calendar_by_date = {
+            observation.observation_date: observation
+            for observation in db.scalars(
+                select(CalendarObservation).where(
+                    CalendarObservation.observation_date >= first_day,
+                    CalendarObservation.observation_date <= today,
+                )
+            )
+        }
 
         day = first_day
         while day <= today:
-            weather = synthetic_weather(day, seed)
+            generated_weather = synthetic_weather(day, seed)
             observation = weather_by_date.get(day)
             if observation is None:
                 observation = WeatherObservation(
-                    observation_date=day, source="SYNTHETIC", **weather
+                    observation_date=day, source="SYNTHETIC", **generated_weather
                 )
                 db.add(observation)
                 stored_weather_days += 1
             elif observation.source == "SYNTHETIC":
-                for field, value in weather.items():
+                for field, value in generated_weather.items():
                     setattr(observation, field, value)
                 stored_weather_days += 1
+            weather = {
+                "temperature_max_c": float(observation.temperature_max_c or 0),
+                "temperature_min_c": float(observation.temperature_min_c or 0),
+                "precipitation_mm": float(observation.precipitation_mm),
+            }
+
+            synthetic_events = synthetic_calendar(day)
+            calendar_observation = calendar_by_date.get(day)
+            if calendar_observation is None:
+                calendar_observation = CalendarObservation(
+                    observation_date=day,
+                    source="SYNTHETIC",
+                    **synthetic_events,
+                )
+                db.add(calendar_observation)
+            elif calendar_observation.source == "SYNTHETIC":
+                calendar_observation.is_holiday = synthetic_events["is_holiday"]
+                calendar_observation.is_festivity = synthetic_events["is_festivity"]
+            calendar = {
+                "is_holiday": calendar_observation.is_holiday,
+                "is_festivity": calendar_observation.is_festivity,
+            }
 
             for index, product in enumerate(products):
                 external_id = f"synthetic-v1-{day.isoformat()}-product-{product.id}"
-                quantity = units_for_day(day, index, weather, seed)
+                quantity = units_for_day(day, index, weather, calendar, seed)
                 transaction = existing_rows.get(external_id)
                 if quantity:
                     if transaction is None:
